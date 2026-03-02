@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "511533701172",
+    "project_id": "nyraai-2d11f",
+    "storage_bucket": "nyraai-2d11f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:511533701172:android:ee7aeb116e626d690c1261",
+        "android_client_info": {
+          "package_name": "com.nyraai.nyra"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzk35V3X90xxXm7YBcrIa-Xza7wY7JEas"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
