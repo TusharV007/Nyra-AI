@@ -37,9 +37,21 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isScanning = true);
 
     try {
-      // Use 10.0.2.2 for Android Emulator to hit localhost.
-      // For iOS Simulator or web it would be 127.0.0.1.
-      final url = Uri.parse('http://10.0.2.2:8000/api/scan');
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+// ... Inside _runManualScan() ...
+
+      String baseUrl;
+      if (kIsWeb) {
+        baseUrl = 'http://127.0.0.1:8000';
+      } else if (Platform.isAndroid) {
+        baseUrl = 'http://10.0.2.2:8000';
+      } else {
+        baseUrl = 'http://127.0.0.1:8000';
+      }
+
+      final url = Uri.parse('$baseUrl/api/scan');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
