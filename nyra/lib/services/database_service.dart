@@ -48,4 +48,16 @@ class DatabaseService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  // Delete Profile Photo URL
+  Future<void> deleteProfilePhoto(String uid) async {
+    await _db
+        .collection('users')
+        .doc(uid)
+        .update({
+          'profilePhotoUrl': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        })
+        .catchError((_) {}); // Ignore error if document doesn't exist
+  }
 }

@@ -29,4 +29,18 @@ class StorageService {
       throw Exception('Failed to upload image: $e');
     }
   }
+
+  // Delete an identity photo from Firebase Storage
+  Future<void> deleteProfilePhoto(String uid) async {
+    try {
+      final ref = _storage
+          .ref()
+          .child('users')
+          .child(uid)
+          .child('profile_photo.jpg');
+      await ref.delete();
+    } catch (e) {
+      // Ignore errors (e.g., file doesn't exist)
+    }
+  }
 }

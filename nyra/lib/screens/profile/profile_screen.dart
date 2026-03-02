@@ -15,8 +15,10 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _alertsEnabled = true;
   bool _isUploading = false;
+  bool _isDeleting = false;
   final _picker = ImagePicker();
-  final User? user = FirebaseAuth.instance.currentUser;
+
+  User? get user => FirebaseAuth.instance.currentUser;
 
   Future<void> _uploadPhoto() async {
     if (user == null) return;
@@ -56,6 +58,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _deletePhoto() async {
+    if (user == null || user!.photoURL == null) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      await StorageService().deleteProfilePhoto(user!.uid);
+      await DatabaseService().deleteProfilePhoto(user!.uid);
+      await user!.updatePhotoURL(null);
+      await user!.reload();
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Profile photo deleted.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting photo: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,17 +94,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildProfileHeader(context),
-              const SizedBox(height: 32),
-              _buildPhotoUploadSection(context),
-              const SizedBox(height: 32),
-              _buildSettingsSection(context),
-            ],
+        child: RefreshIndicator(
+          onRefresh: () async {
+            if (user != null) {
+              await user!.reload();
+              if (mounted) setState(() {});
+            }
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildProfileHeader(context),
+                const SizedBox(height: 32),
+                _buildPhotoUploadSection(context),
+                const SizedBox(height: 32),
+                _buildSettingsSection(context),
+              ],
+            ),
           ),
         ),
       ),
@@ -129,20 +168,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 24),
-          OutlinedButton.icon(
-            onPressed: _isUploading ? null : _uploadPhoto,
-            icon: _isUploading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.camera_alt_outlined),
-            label: Text(_isUploading ? 'UPLOADING...' : 'UPDATE PHOTO'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 50),
+          if (user?.photoURL != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                user!.photoURL!,
+                height: 250,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
             ),
-          ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isUploading || _isDeleting
+                        ? null
+                        : _uploadPhoto,
+                    icon: _isUploading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.camera_alt_outlined),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('UPDATE'),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isUploading || _isDeleting
+                        ? null
+                        : _deletePhoto,
+                    icon: _isDeleting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.black,
+                            ),
+                          )
+                        : const Icon(Icons.delete_outline),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('DELETE'),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(double.infinity, 50),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else
+            OutlinedButton.icon(
+              onPressed: _isUploading || _isDeleting ? null : _uploadPhoto,
+              icon: _isUploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.camera_alt_outlined),
+              label: Text(_isUploading ? 'UPLOADING...' : 'UPLOAD PHOTO'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
         ],
       ),
     );
