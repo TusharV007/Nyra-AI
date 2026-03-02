@@ -158,9 +158,9 @@ async def run_deepfake_scan(uid: str, target_name: str, photo_url: str = None) -
             "status": status_msg
         }
         
-        # 4. Push directly to Firestore (User's subcollection)
+        # 4. Push directly to Firestore using a background thread to prevent gRPC asyncio deadlocks
         doc_ref = db.collection("users").document(uid).collection("evidence").document()
-        doc_ref.set(evidence_doc)
+        await asyncio.to_thread(doc_ref.set, evidence_doc)
         
         # Add id for return response tracking
         evidence_doc['id'] = doc_ref.id
@@ -175,7 +175,8 @@ async def run_deepfake_scan(uid: str, target_name: str, photo_url: str = None) -
         "target_name": target_name,
         "status": "Completed"
     }
-    db.collection("users").document(uid).collection("scan_logs").document().set(log_doc)
+    log_ref = db.collection("users").document(uid).collection("scan_logs").document()
+    await asyncio.to_thread(log_ref.set, log_doc)
         
     print(f"Scan complete. Found {len(findings)} results. Secured to Firestore.")
     return findings

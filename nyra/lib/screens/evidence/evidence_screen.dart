@@ -184,17 +184,27 @@ class EvidenceScreen extends StatelessWidget {
                       ),
                     );
                   },
-                  icon: const Icon(Icons.picture_as_pdf, size: 18),
-                  label: const Text('EXPORT PDF'),
+                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('EXPORT PDF'),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {},
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('TAKEDOWN'),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('TAKEDOWN'),
+                  ),
                   style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
                   ),

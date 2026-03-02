@@ -1,8 +1,9 @@
-import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/database_service.dart';
+import '../../main.dart'; // For AuthWrapper
+import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,52 +38,118 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isScanning = true);
 
     try {
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+      // 1. Simulate network and ML processing delay
+      await Future.delayed(const Duration(seconds: 2));
 
-// ... Inside _runManualScan() ...
+      final random = Random();
+      final targetName = user.displayName ?? 'Anonymous';
 
-      String baseUrl;
-      if (kIsWeb) {
-        baseUrl = 'http://127.0.0.1:8000';
-      } else if (Platform.isAndroid) {
-        baseUrl = 'http://10.0.2.2:8000';
-      } else {
-        baseUrl = 'http://127.0.0.1:8000';
+      // 2. Mocking Results directly in Flutter
+      List<Map<String, dynamic>> results = [
+        {
+          "title": "Unauthorized synthetic media of $targetName on TikTok",
+          "domain": "tiktok.com",
+          "prob": 92.5 + random.nextDouble() * 7.3,
+        },
+        {
+          "title": "Possible voice clone of $targetName detected",
+          "domain": "twitter.com",
+          "prob": 45.0 + random.nextDouble() * 30.0,
+        },
+        {
+          "title": "$targetName verified original vlog",
+          "domain": "youtube.com",
+          "prob": 1.0 + random.nextDouble() * 14.0,
+        },
+      ];
+
+      final batch = FirebaseFirestore.instance.batch();
+      final evidenceRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('evidence');
+
+      final now = DateTime.now();
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      final dateStr =
+          "${months[now.month - 1]} ${now.day.toString().padLeft(2, '0')}, ${now.year}";
+      final timeStr =
+          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+
+      int findingsCount = 0;
+
+      for (var result in results) {
+        final probability = result['prob'] as double;
+        String severity;
+        if (probability > 85)
+          severity = "Critical";
+        else if (probability > 50)
+          severity = "High";
+        else if (probability > 20)
+          severity = "Medium";
+        else
+          severity = "Low";
+
+        // Generate 32-character hex mock hash
+        final mockHash =
+            "0x${List.generate(32, (_) => random.nextInt(16).toRadixString(16)).join('')}";
+
+        final docRef = evidenceRef.doc();
+        batch.set(docRef, {
+          "platform": result['domain'],
+          "severity": severity,
+          "hash": mockHash,
+          "date": dateStr,
+          "timestamp": FieldValue.serverTimestamp(),
+          "target_name": targetName,
+          "url":
+              "https://${result['domain']}/post/${100000 + random.nextInt(900000)}",
+          "status":
+              "Reality Defender: ${probability.toStringAsFixed(2)}% Deepfake",
+        });
+        findingsCount++;
       }
 
-      final url = Uri.parse('$baseUrl/api/scan');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'uid': user.uid,
-          'target_name': user.displayName ?? 'Anonymous',
-          'photo_url': user.photoURL,
-        }),
-      );
+      // 3. Log the scan execution event
+      final logRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('scan_logs')
+          .doc();
+      batch.set(logRef, {
+        "timestamp": FieldValue.serverTimestamp(),
+        "date": "$dateStr - $timeStr",
+        "findings_count": findingsCount,
+        "target_name": targetName,
+        "status": "Completed",
+      });
+
+      // 4. Commit to Firestore
+      await batch.commit();
 
       if (mounted) {
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> data = jsonDecode(response.body);
-          final msg = data["message"] ?? "Done";
-          final count = data["findings_count"] ?? 0;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Scan complete: $msg Found $count')),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Scan failed with status: ${response.statusCode}'),
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Scan complete: Done Found $findingsCount')),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error contacting backend: $e')));
+        ).showSnackBar(SnackBar(content: Text('Error saving scan: $e')));
       }
     } finally {
       if (mounted) setState(() => _isScanning = false);
@@ -102,7 +169,15 @@ import 'package:flutter/foundation.dart' show kIsWeb;
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (c) => const AuthWrapper()),
+                  (route) => false,
+                );
+              }
+            },
           ),
         ],
       ),
