@@ -41,9 +41,8 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isScanning = true);
 
     try {
-      // Since you are debugging on a physical device, we must use your computer's
-      // actual local network IP address instead of localhost or the emulator alias.
-      final String baseUrl = 'http://10.29.117.168:8000';
+      // Use the production Railway server
+      final String baseUrl = 'https://nyra-ai-production.up.railway.app';
 
       // 1. Call the backend — it performs the AI analysis and returns JSON results
       final url = Uri.parse('$baseUrl/api/scan');
