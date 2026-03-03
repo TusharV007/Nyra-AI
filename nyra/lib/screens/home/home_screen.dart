@@ -1,8 +1,11 @@
-import 'dart:math';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/database_service.dart';
 import '../../main.dart'; // For AuthWrapper
+import '../evidence/scan_results_screen.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -38,118 +41,89 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isScanning = true);
 
     try {
-      // 1. Simulate network and ML processing delay
-      await Future.delayed(const Duration(seconds: 2));
+      // Since you are debugging on a physical device, we must use your computer's
+      // actual local network IP address instead of localhost or the emulator alias.
+      final String baseUrl = 'http://10.29.117.168:8000';
 
-      final random = Random();
-      final targetName = user.displayName ?? 'Anonymous';
+      // 1. Call the backend — it performs the AI analysis and returns JSON results
+      final url = Uri.parse('$baseUrl/api/scan');
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'uid': user.uid,
+              'target_name': user.displayName ?? 'Anonymous',
+              'photo_url': user.photoURL,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw Exception('Connection to server timed out.'),
+          );
 
-      // 2. Mocking Results directly in Flutter
-      List<Map<String, dynamic>> results = [
-        {
-          "title": "Unauthorized synthetic media of $targetName on TikTok",
-          "domain": "tiktok.com",
-          "prob": 92.5 + random.nextDouble() * 7.3,
-        },
-        {
-          "title": "Possible voice clone of $targetName detected",
-          "domain": "twitter.com",
-          "prob": 45.0 + random.nextDouble() * 30.0,
-        },
-        {
-          "title": "$targetName verified original vlog",
-          "domain": "youtube.com",
-          "prob": 1.0 + random.nextDouble() * 14.0,
-        },
-      ];
+      if (!mounted) return;
 
-      final batch = FirebaseFirestore.instance.batch();
-      final evidenceRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('evidence');
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final List<dynamic> findings = data['findings'] ?? [];
 
-      final now = DateTime.now();
-      final months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      final dateStr =
-          "${months[now.month - 1]} ${now.day.toString().padLeft(2, '0')}, ${now.year}";
-      final timeStr =
-          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+        // 2. Log the scan event
+        final db = FirebaseFirestore.instance;
+        final logRef = db
+            .collection('users')
+            .doc(user.uid)
+            .collection('scan_logs')
+            .doc();
 
-      int findingsCount = 0;
-
-      for (var result in results) {
-        final probability = result['prob'] as double;
-        String severity;
-        if (probability > 85)
-          severity = "Critical";
-        else if (probability > 50)
-          severity = "High";
-        else if (probability > 20)
-          severity = "Medium";
-        else
-          severity = "Low";
-
-        // Generate 32-character hex mock hash
-        final mockHash =
-            "0x${List.generate(32, (_) => random.nextInt(16).toRadixString(16)).join('')}";
-
-        final docRef = evidenceRef.doc();
-        batch.set(docRef, {
-          "platform": result['domain'],
-          "severity": severity,
-          "hash": mockHash,
-          "date": dateStr,
-          "timestamp": FieldValue.serverTimestamp(),
-          "target_name": targetName,
-          "url":
-              "https://${result['domain']}/post/${100000 + random.nextInt(900000)}",
-          "status":
-              "Reality Defender: ${probability.toStringAsFixed(2)}% Deepfake",
+        await logRef.set({
+          'timestamp': FieldValue.serverTimestamp(),
+          'date': DateTime.now().toString().substring(0, 16),
+          'findings_count': findings.length,
+          'target_name': user.displayName ?? 'Anonymous',
+          'status': 'Completed',
+          'findings':
+              findings, // Store the raw results so they can be viewed later
         });
-        findingsCount++;
-      }
 
-      // 3. Log the scan execution event
-      final logRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('scan_logs')
-          .doc();
-      batch.set(logRef, {
-        "timestamp": FieldValue.serverTimestamp(),
-        "date": "$dateStr - $timeStr",
-        "findings_count": findingsCount,
-        "target_name": targetName,
-        "status": "Completed",
-      });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Scan complete! Found ${findings.length} result(s).',
+              ),
+            ),
+          );
 
-      // 4. Commit to Firestore
-      await batch.commit();
-
-      if (mounted) {
+          // Navigate to the staging screen to review results before saving
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ScanResultsScreen(
+                findings: List<Map<String, dynamic>>.from(findings),
+              ),
+            ),
+          );
+        }
+      } else {
+        // Show the actual backend error detail for debugging
+        String detail = response.body;
+        try {
+          final decoded = jsonDecode(response.body);
+          detail = decoded['detail']?.toString() ?? response.body;
+        } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Scan complete: Done Found $findingsCount')),
+          SnackBar(
+            content: Text('Scan failed (${response.statusCode}): $detail'),
+            duration: const Duration(seconds: 8),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error saving scan: $e')));
+        ).showSnackBar(SnackBar(content: Text('Error contacting backend: $e')));
       }
     } finally {
       if (mounted) setState(() => _isScanning = false);
@@ -166,6 +140,47 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.notifications_none),
             onPressed: () {},
+          ),
+          IconButton(
+            tooltip: 'Clear all evidence data',
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: () async {
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null) return;
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  title: const Text('Clear Evidence Data'),
+                  content: const Text(
+                    'This will delete all saved scan results so you can run a fresh scan. Continue?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text(
+                        'Clear',
+                        style: TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true && mounted) {
+                await DatabaseService().clearAllEvidence(user.uid);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('All evidence cleared. Run a new scan!'),
+                    ),
+                  );
+                }
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -373,6 +388,35 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final log = scanLogs[index];
               return ListTile(
+                onTap: () {
+                  final storedFindings = log['findings'] as List<dynamic>?;
+                  if (storedFindings != null && storedFindings.isNotEmpty) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ScanResultsScreen(
+                          findings: List<Map<String, dynamic>>.from(
+                            storedFindings,
+                          ),
+                        ),
+                      ),
+                    );
+                  } else if (log['findings_count'] == 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('This scan found 0 results.'),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Scan details not available. Old log format.',
+                        ),
+                      ),
+                    );
+                  }
+                },
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(
                   log['findings_count'] > 0

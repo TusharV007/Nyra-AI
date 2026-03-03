@@ -49,6 +49,16 @@ class DatabaseService {
     }, SetOptions(merge: true));
   }
 
+  // Delete a single evidence record by its Firestore document ID
+  Future<void> deleteEvidence(String uid, String docId) async {
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('evidence')
+        .doc(docId)
+        .delete();
+  }
+
   // Delete Profile Photo URL
   Future<void> deleteProfilePhoto(String uid) async {
     await _db
@@ -59,5 +69,25 @@ class DatabaseService {
           'updatedAt': FieldValue.serverTimestamp(),
         })
         .catchError((_) {}); // Ignore error if document doesn't exist
+  }
+
+  // Clear ALL evidence and scan logs (flush stale mock data before real scan)
+  Future<void> clearAllEvidence(String uid) async {
+    final evidenceDocs = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('evidence')
+        .get();
+    for (final doc in evidenceDocs.docs) {
+      await doc.reference.delete();
+    }
+    final logDocs = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('scan_logs')
+        .get();
+    for (final doc in logDocs.docs) {
+      await doc.reference.delete();
+    }
   }
 }

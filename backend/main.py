@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,10 +24,22 @@ class ScanRequest(BaseModel):
 
 @app.post("/api/scan")
 async def trigger_scan(request: ScanRequest):
+    """
+    Performs the AI analysis and returns findings as JSON.
+    The Flutter app writes the results to Firestore using its own authenticated Firebase SDK.
+    The backend no longer touches Firestore directly, which eliminates the
+    'invalid_grant: Invalid JWT Signature' error from the Firebase Admin SDK.
+    """
+    if not request.uid:
+        raise HTTPException(status_code=400, detail="uid is required")
     try:
-        # Trigger the mock scanning utility
-        results = await run_deepfake_scan(request.uid, request.target_name, request.photo_url)
-        return {"status": "success", "message": "Scan completed.", "findings_count": len(results)}
+        findings = await run_deepfake_scan(request.target_name, request.photo_url)
+        return {
+            "status": "success",
+            "message": "Scan completed.",
+            "findings_count": len(findings),
+            "findings": findings,   # Flutter reads this and saves to Firestore
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
